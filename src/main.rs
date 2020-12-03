@@ -68,12 +68,18 @@ fn main() {
             gl::LoadIdentity();
             gluLookAt(3.0 * f64::cos(angle * f64::consts::PI), 0.0, 3.0 * f64::sin(angle * f64::consts::PI), 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 
+            gl::PushMatrix();
+            gl::Translatef(0.0, -1.0, 0.0);
+            gl::Scalef(10.0, 10.0, 10.0);
+
             for i in 0..triangles.len() {
                 draw_triangle(triangles[i], color);
                 draw_aabb(aabbs[i]);
             };
 
             draw_aabb(whole_aabb);
+
+            gl::PopMatrix();
         }
 
         for (_, event) in glfw::flush_messages(&events) {
@@ -107,7 +113,7 @@ fn read_off_to_triangles(path: &str) -> Vec<Triangle> {
         vertices_buf.pop();
         let token_buffer: Vec<&str> = vertices_buf.split(' ').collect();
 
-        vertices.push([token_buffer[0].parse::<f32>().unwrap() * 10.0, token_buffer[1].parse::<f32>().unwrap() * 10.0 - 1.0, token_buffer[2].parse::<f32>().unwrap() * 10.0]);
+        vertices.push([token_buffer[0].parse::<f32>().unwrap(), token_buffer[1].parse::<f32>().unwrap(), token_buffer[2].parse::<f32>().unwrap()]);
     };
 
     let mut triangles: Vec<Triangle> = Vec::new();
