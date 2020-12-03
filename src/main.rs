@@ -1,4 +1,6 @@
 use std::f64;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 
 extern crate glfw;
 
@@ -15,9 +17,10 @@ extern {
     fn gluLookAt(eyeX: GLdouble, eyeY: GLdouble, eyeZ: GLdouble, centerX: GLdouble, centerY: GLdouble, centerZ: GLdouble, upX: GLdouble, upY: GLdouble, upZ: GLdouble);
 }
 
-type Triangle = [[f32; 3]; 3];
+type Coord = [f32; 3];
+type Triangle = [Coord; 3];
 type Color = Triangle;
-type AABB = [[f32; 3]; 2];
+type AABB = [Coord; 2];
 
 fn main() {
     let width = 512;
@@ -33,6 +36,9 @@ fn main() {
     gl::load_with(|s| window.get_proc_address(s));
 
     unsafe {
+        gl::ClearColor(1.0, 1.0, 1.0, 1.0);
+        gl::Enable(gl::DEPTH_TEST);
+
         gl::MatrixMode(gl::PROJECTION);
         gl::LoadIdentity();
         gluPerspective(45.0, (width / height) as GLdouble, 0.1, 20.0);
@@ -44,31 +50,30 @@ fn main() {
 
     let mut angle = 0.0;
 
-    let triangle1 = [[1.0, 1.0, 1.0], [1.0, 0.0, 0.0], [0.0, 0.0, 0.0]];
-    let triangle2 = [[-1.0, 0.0, 0.5], [-0.5, -1.0, 0.2], [0.0, -0.2, 0.0]];
-    let triangles = vec![triangle1, triangle2];
-    let color = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
-    let aabb = create_aabb(triangles.as_slice());
-    let aabb1 = create_aabb(&[triangles[0]]);
-    let aabb2 = create_aabb(&[triangles[1]]);
+    let triangles = read_off_to_triangles("resources/bunny.off");
+
+    let color = [[0.0, 1.0, 0.0], [0.0, 1.0, 0.0], [0.0, 1.0, 0.0]];
+
+    let whole_aabb = create_aabb(triangles.as_slice());
+    let mut aabbs: Vec<AABB> = Vec::new();
+    for triangle in triangles.iter() { aabbs.push(create_aabb(&[*triangle])); };
 
     while !window.should_close() {
         glfw.poll_events();
 
         unsafe {
-            gl::ClearColor(1.0, 1.0, 1.0, 1.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
+            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
 
             gl::MatrixMode(gl::MODELVIEW);
             gl::LoadIdentity();
-            gluLookAt(5.0 * f64::cos(angle * f64::consts::PI), 0.0, 5.0 * f64::sin(angle * f64::consts::PI), 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+            gluLookAt(3.0 * f64::cos(angle * f64::consts::PI), 0.0, 3.0 * f64::sin(angle * f64::consts::PI), 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 
-            draw_triangle(triangle1, color);
-            draw_triangle(triangle2, color);
+            for i in 0..triangles.len() {
+                draw_triangle(triangles[i], color);
+                draw_aabb(aabbs[i]);
+            };
 
-            draw_aabb(aabb);
-            draw_aabb(aabb1);
-            draw_aabb(aabb2);
+            draw_aabb(whole_aabb);
         }
 
         for (_, event) in glfw::flush_messages(&events) {
@@ -77,6 +82,48 @@ fn main() {
 
         window.swap_buffers();
     }
+}
+
+fn read_off_to_triangles(path: &str) -> Vec<Triangle> {
+    let mut reader = BufReader::new(File::open(path).unwrap());
+    
+    let mut header_buf = String::new();
+    reader.read_line(&mut header_buf).unwrap();
+    header_buf.pop();
+    if header_buf != "OFF" { panic!("input file format is invalid."); };
+
+    let mut num_data_buf = String::new();
+    reader.read_line(&mut num_data_buf).unwrap();
+    num_data_buf.pop();
+    let token_buffer: Vec<&str> = num_data_buf.as_mut_str().split(' ').collect();
+
+    let num_vertices = token_buffer[0].parse::<usize>().unwrap();
+    let num_faces = token_buffer[1].parse::<usize>().unwrap();
+
+    let mut vertices: Vec<Coord> = Vec::new();
+    for _ in 0..num_vertices {
+        let mut vertices_buf = String::new();
+        reader.read_line(&mut vertices_buf).unwrap();
+        vertices_buf.pop();
+        let token_buffer: Vec<&str> = vertices_buf.split(' ').collect();
+
+        vertices.push([token_buffer[0].parse::<f32>().unwrap() * 10.0, token_buffer[1].parse::<f32>().unwrap() * 10.0 - 1.0, token_buffer[2].parse::<f32>().unwrap() * 10.0]);
+    };
+
+    let mut triangles: Vec<Triangle> = Vec::new();
+    for _ in 0..num_faces {
+        let mut indices_buf = String::new();
+        reader.read_line(&mut indices_buf).unwrap();
+        indices_buf.pop();
+        let token_buffer: Vec<&str> = indices_buf.split(' ').collect();
+
+        if token_buffer[0] != "3" { panic!("there are non-triangle faces."); };
+
+        let indices = [token_buffer[1].parse::<usize>().unwrap(), token_buffer[2].parse::<usize>().unwrap(), token_buffer[3].parse::<usize>().unwrap()];
+        triangles.push([vertices[indices[0]], vertices[indices[1]], vertices[indices[2]]]);
+    };
+
+    triangles
 }
 
 fn draw_triangle(triangle: Triangle, color: Color) {
