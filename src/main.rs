@@ -51,11 +51,11 @@ fn main() {
     let mut angle = 0.0;
 
     let mut triangles = read_off_to_triangles("resources/bunny.off");
-    triangles.sort_by(|a, b| a.partial_cmp(&b).unwrap());
+    let size = triangles.len();
 
     let color = [[0.0, 1.0, 0.0], [0.0, 1.0, 0.0], [0.0, 1.0, 0.0]];
 
-    let aabbs = construct_aabbs(triangles.as_slice(), 0, 5);
+    let aabbs = construct_aabbs(&mut triangles, size, 0, 10);
 
     while !window.should_close() {
         glfw.poll_events();
@@ -159,12 +159,28 @@ fn create_aabb(triangles: &[Triangle]) -> AABB {
      [x.iter().fold(f32::MIN, |m, v| v.max(m)), y.iter().fold(f32::MIN, |m, v| v.max(m)), z.iter().fold(f32::MIN, |m, v| v.max(m))]]
 }
 
-fn construct_aabbs(triangles: &[Triangle], times: usize, limit: usize) -> Vec<AABB> {
-    if times > limit || times > (triangles.len() as f64).log2() as usize { vec![] }
+fn construct_aabbs(triangles: &mut [Triangle], total: usize, times: usize, limit: usize) -> Vec<AABB> {
+    if times > limit || times > (total as f64).log2().ceil() as usize { vec![] }
     else {
-        let mut aabbs = vec![create_aabb(triangles)];
-        aabbs.append(construct_aabbs(&triangles[0..triangles.len()/2], times + 1, limit).as_mut());
-        aabbs.append(construct_aabbs(&triangles[triangles.len()/2..triangles.len()], times + 1, limit).as_mut());
+        let size = triangles.len();
+
+        let aabb = create_aabb(triangles);
+        let mut aabbs = vec![aabb];
+
+        let diff = [aabb[1][0] - aabb[0][0], aabb[1][1] - aabb[0][1], aabb[1][2] - aabb[0][2]];
+
+        let idx = if diff[0] > diff[1] && diff[0] > diff[2] { 0 }
+        else if diff[1] > diff[0] && diff[1] > diff[2] { 1 }
+        else { 2 };
+
+        triangles.sort_by(|a, b| {
+            let g_a = [(a[0][0] + a[1][0] + a[2][0]) / 3.0, (a[0][1] + a[1][1] + a[2][1]) / 3.0, (a[0][2] + a[1][2] + a[2][2]) / 3.0];
+            let g_b = [(b[0][0] + b[1][0] + a[2][0]) / 3.0, (b[0][1] + b[1][1] + b[2][1]) / 3.0, (b[0][2] + b[1][2] + b[2][2]) / 3.0];
+            g_a[idx].partial_cmp(&g_b[idx]).unwrap()
+        });
+
+        aabbs.append(construct_aabbs(&mut triangles[0..size/2], total, times + 1, limit).as_mut());
+        aabbs.append(construct_aabbs(&mut triangles[size/2..size], total, times + 1, limit).as_mut());
         aabbs
     }
 }
