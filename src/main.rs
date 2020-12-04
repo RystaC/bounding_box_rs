@@ -50,13 +50,12 @@ fn main() {
 
     let mut angle = 0.0;
 
-    let triangles = read_off_to_triangles("resources/bunny.off");
+    let mut triangles = read_off_to_triangles("resources/bunny.off");
+    triangles.sort_by(|a, b| a.partial_cmp(&b).unwrap());
 
     let color = [[0.0, 1.0, 0.0], [0.0, 1.0, 0.0], [0.0, 1.0, 0.0]];
 
-    let whole_aabb = create_aabb(triangles.as_slice());
-    let mut aabbs: Vec<AABB> = Vec::new();
-    for triangle in triangles.iter() { aabbs.push(create_aabb(&[*triangle])); };
+    let aabbs = construct_aabbs(triangles.as_slice(), 0, 5);
 
     while !window.should_close() {
         glfw.poll_events();
@@ -72,12 +71,8 @@ fn main() {
             gl::Translatef(0.0, -1.0, 0.0);
             gl::Scalef(10.0, 10.0, 10.0);
 
-            for i in 0..triangles.len() {
-                draw_triangle(triangles[i], color);
-                draw_aabb(aabbs[i]);
-            };
-
-            draw_aabb(whole_aabb);
+            for i in 0..triangles.len() { draw_triangle(triangles[i], color); };
+            for i in 0..aabbs.len() { draw_aabb(aabbs[i]); };
 
             gl::PopMatrix();
         }
@@ -162,6 +157,16 @@ fn create_aabb(triangles: &[Triangle]) -> AABB {
 
     [[x.iter().fold(f32::MAX, |m, v| v.min(m)), y.iter().fold(f32::MAX, |m, v| v.min(m)), z.iter().fold(f32::MAX, |m, v| v.min(m))],
      [x.iter().fold(f32::MIN, |m, v| v.max(m)), y.iter().fold(f32::MIN, |m, v| v.max(m)), z.iter().fold(f32::MIN, |m, v| v.max(m))]]
+}
+
+fn construct_aabbs(triangles: &[Triangle], times: usize, limit: usize) -> Vec<AABB> {
+    if times > limit || times > (triangles.len() as f64).log2() as usize { vec![] }
+    else {
+        let mut aabbs = vec![create_aabb(triangles)];
+        aabbs.append(construct_aabbs(&triangles[0..triangles.len()/2], times + 1, limit).as_mut());
+        aabbs.append(construct_aabbs(&triangles[triangles.len()/2..triangles.len()], times + 1, limit).as_mut());
+        aabbs
+    }
 }
 
 fn draw_aabb(aabb: AABB) {
